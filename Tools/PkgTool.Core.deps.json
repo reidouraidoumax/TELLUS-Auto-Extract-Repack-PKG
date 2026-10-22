@@ -1,0 +1,40 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0/win-x64",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {},
+    ".NETCoreApp,Version=v8.0/win-x64": {
+      "PkgTool.Core/0.2.0": {
+        "dependencies": {
+          "LibOrbisPkg.Core": "0.2.0"
+        },
+        "runtime": {
+          "PkgTool.Core.dll": {}
+        }
+      },
+      "LibOrbisPkg.Core/0.2.0": {
+        "runtime": {
+          "LibOrbisPkg.Core.dll": {
+            "assemblyVersion": "0.2.0.0",
+            "fileVersion": "0.2.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "PkgTool.Core/0.2.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "LibOrbisPkg.Core/0.2.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

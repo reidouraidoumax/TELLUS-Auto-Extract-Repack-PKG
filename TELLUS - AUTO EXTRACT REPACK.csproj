@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>false</CodeAnalysisTreatWarningsAsErrors>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>PS4PkgAutoExtractor</AssemblyName>
+    <RootNamespace>PS4PkgAutoExtractor</RootNamespace>
+    <ApplicationIcon>Resources\tellus_icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!--
+    The SDK automatically includes every .cs file under the project folder.
+    OrbisPkgTool source therefore does NOT need an explicit Compile Include.
+    We only remove its standalone CLI entry point and its own project file
+    from the application's compilation.
+  -->
+  <ItemGroup>
+    <Compile Remove="OrbisPkgTool\Program.cs" />
+    <Compile Remove="OrbisPkgTool\OrbisPkgTool.csproj" />
+    <Compile Remove="OrbisPkgTool\OrbisPkgTool.Gui\**\*.cs" />
+    <Compile Remove="OrbisPkgTool\OrbisPkgTool.Tests\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Resources\tellus_icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpZipLib" Version="1.4.2" />
+  </ItemGroup>
+
+  <!--
+    Bundled PKG-building tools live inside the compiled exe as embedded
+    resources instead of as loose files next to it (see Tools/README.txt
+    for what goes in the Tools folder and where to get it). At startup,
+    MainForm extracts these to a hidden per-user AppData folder — nothing
+    but PS4PkgAutoExtractor.exe itself needs to be visible next to the exe.
+    Each file needs its own explicit LogicalName (rather than a wildcard)
+    so the extraction code can map resource name -> exact output path
+    without trying to parse dots out of filenames that themselves contain
+    dots (e.g. "orbis-pub-cmd.exe").
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Tools\PkgTool.Core.exe" LogicalName="BundledTools.PkgTool.Core.exe" />
+    <EmbeddedResource Include="Tools\PkgTool.Core.dll" LogicalName="BundledTools.PkgTool.Core.dll" />
+    <EmbeddedResource Include="Tools\LibOrbisPkg.Core.dll" LogicalName="BundledTools.LibOrbisPkg.Core.dll" />
+    <EmbeddedResource Include="Tools\PkgTool.Core.deps.json" LogicalName="BundledTools.PkgTool.Core.deps.json" />
+    <EmbeddedResource Include="Tools\PkgTool.Core.runtimeconfig.json" LogicalName="BundledTools.PkgTool.Core.runtimeconfig.json" />
+    <EmbeddedResource Include="Tools\orbis-pub-cmd.exe" LogicalName="BundledTools.orbis-pub-cmd.exe" />
+    <EmbeddedResource Include="Tools\orbis-pub-prx.dll" LogicalName="BundledTools.orbis-pub-prx.dll" />
+    <EmbeddedResource Include="Tools\ext\di.exe" LogicalName="BundledTools.ext.di.exe" />
+    <EmbeddedResource Include="Tools\ext\sc.exe" LogicalName="BundledTools.ext.sc.exe" />
+    <EmbeddedResource Include="Tools\ext\libatrac9.dll" LogicalName="BundledTools.ext.libatrac9.dll" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,622 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using OrbisPkgTool;
+using OrbisPkgTool.Gp4;
+using OrbisPkgTool.Pfs;
+
+namespace PS4PkgAutoExtractor;
+
+public sealed partial class MainForm : Form
+{
+    private readonly Queue<string> extractQueue = new();
+    private readonly object extractQueueLock = new();
+    private bool extractProcessing;
+    private CancellationTokenSource? extractCancellation;
+
+    private readonly Queue<string> repackQueue = new();
+    private readonly object repackQueueLock = new();
+    private bool repackProcessing;
+    private CancellationTokenSource? repackCancellation;
+
+    private const string DefaultPasscode = PkgReader.DefaultPasscode;
+
+    // Fixed to the bundled tools — orbis-pub-cmd.exe is the only one that
+    // honors our per-file pfs_compression policy (PkgTool.Core.exe ignores
+    // it and always builds uncompressed), so it's the one actually used;
+    // PkgTool.Core.exe stays as a silent fallback in case orbis-pub-cmd.exe
+    // is ever missing from a build. Neither is user-configurable — both are
+    // meant to just be present in Tools/ (see Tools/README.txt).
+    private string? pkgToolPath;
+    private string? pubCmdPath;
+
+    public MainForm()
+    {
+        InitializeComponent();
+    }
+
+    private void MainForm_Load(object sender, EventArgs e)
+    {
+        ApplyDarkTitleBar();
+        ApplyProgressBarColors(extractProgress);
+        ApplyProgressBarColors(repackProgress);
+        TabControl_SizeChanged(tabControl, EventArgs.Empty);
+
+        var toolsDir = ExtractBundledTools();
+        var bundledPkgTool = Path.Combine(toolsDir, "PkgTool.Core.exe");
+        if (File.Exists(bundledPkgTool))
+            pkgToolPath = bundledPkgTool;
+
+        var bundledPubCmd = Path.Combine(toolsDir, "orbis-pub-cmd.exe");
+        if (File.Exists(bundledPubCmd))
+            pubCmdPath = bundledPubCmd;
+    }
+
+    /// <summary>
+    /// Writes the embedded PKG-building tools out to a per-user AppData
+    /// folder (not visible next to the exe) and returns that folder. Only
+    /// actually writes a file when it's missing or its size doesn't match
+    /// the embedded copy — cheap staleness check so an app update refreshes
+    /// stale tools without re-extracting ~4 MB on every single launch.
+    /// </summary>
+    private static string ExtractBundledTools()
+    {
+        var toolsDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PS4PkgAutoExtractor", "Tools");
+
+        // logical resource name -> relative output path under toolsDir
+        var files = new (string Resource, string RelativePath)[]
+        {
+            ("PkgTool.Core.exe", "PkgTool.Core.exe"),
+            ("PkgTool.Core.dll", "PkgTool.Core.dll"),
+            ("LibOrbisPkg.Core.dll", "LibOrbisPkg.Core.dll"),
+            ("PkgTool.Core.deps.json", "PkgTool.Core.deps.json"),
+            ("PkgTool.Core.runtimeconfig.json", "PkgTool.Core.runtimeconfig.json"),
+            ("orbis-pub-cmd.exe", "orbis-pub-cmd.exe"),
+            ("orbis-pub-prx.dll", "orbis-pub-prx.dll"),
+            ("ext.di.exe", Path.Combine("ext", "di.exe")),
+            ("ext.sc.exe", Path.Combine("ext", "sc.exe")),
+            ("ext.libatrac9.dll", Path.Combine("ext", "libatrac9.dll")),
+        };
+
+        var asm = typeof(MainForm).Assembly;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(toolsDir, "ext"));
+
+            foreach (var (resource, relativePath) in files)
+            {
+                using var stream = asm.GetManifestResourceStream("BundledTools." + resource);
+                if (stream is null) continue; // not embedded in this build — fine, just skip it
+
+                var outPath = Path.Combine(toolsDir, relativePath);
+                if (File.Exists(outPath) && new FileInfo(outPath).Length == stream.Length)
+                    continue; // already extracted and the right size — skip re-writing it
+
+                using var outFile = new FileStream(outPath, FileMode.Create, FileAccess.Write);
+                stream.CopyTo(outFile);
+            }
+        }
+        catch
+        {
+            // Best-effort — if extraction fails (e.g. no write permission),
+            // the caller just won't find the tools and reports that clearly.
+        }
+
+        return toolsDir;
+    }
+
+    private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+    {
+        extractCancellation?.Cancel();
+        repackCancellation?.Cancel();
+    }
+
+    private void TabControl_SizeChanged(object sender, EventArgs e)
+    {
+        if (tabControl.TabCount == 0) return;
+
+        // Fixed-size tabs don't stretch on their own, so recompute the width
+        // whenever the strip resizes to keep them spanning the full row with
+        // no leftover blank space to the right of the last tab.
+        var width = Math.Max(40, tabControl.Width / tabControl.TabCount - 4);
+        var desired = new Size(width, tabControl.ItemSize.Height);
+        if (tabControl.ItemSize != desired)
+            tabControl.ItemSize = desired;
+    }
+
+    // ---- Extract tab ----
+
+    public void QueueFiles(IEnumerable<string> paths)
+    {
+        var added = 0;
+        lock (extractQueueLock)
+        {
+            foreach (var path in paths)
+            {
+                if (File.Exists(path) && path.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase))
+                {
+                    extractQueue.Enqueue(Path.GetFullPath(path));
+                    added++;
+                }
+            }
+        }
+
+        if (added > 0)
+        {
+            AppendLog(extractLog, $"Queued {added} PKG file{(added == 1 ? "" : "s")}.");
+            if (!extractProcessing)
+                _ = ProcessExtractQueueAsync();
+        }
+    }
+
+    private void OnDragEnter(object? sender, DragEventArgs e)
+    {
+        if (!e.Data!.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effect = DragDropEffects.None;
+            return;
+        }
+
+        var paths = (string[])e.Data.GetData(DataFormats.FileDrop)!;
+        var valid = tabControl.SelectedTab == repackPage
+            ? paths.Any(Directory.Exists)
+            : paths.Any(f => f.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase));
+
+        e.Effect = valid ? DragDropEffects.Copy : DragDropEffects.None;
+    }
+
+    private void OnDragDrop(object? sender, DragEventArgs e)
+    {
+        var paths = (string[])e.Data!.GetData(DataFormats.FileDrop)!;
+        if (tabControl.SelectedTab == repackPage)
+            QueueFolders(paths);
+        else
+            QueueFiles(paths);
+    }
+
+    private async Task ProcessExtractQueueAsync()
+    {
+        if (extractProcessing) return;
+        extractProcessing = true;
+        extractCancellation = new CancellationTokenSource();
+        extractProgress.Visible = true;
+
+        try
+        {
+            while (true)
+            {
+                string? pkg;
+                lock (extractQueueLock)
+                    pkg = extractQueue.Count > 0 ? extractQueue.Dequeue() : null;
+
+                if (pkg is null)
+                    break;
+
+                await ExtractOneAsync(pkg, extractCancellation.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            extractStatus.Text = "Extraction cancelled.";
+            AppendLog(extractLog, "Extraction cancelled.");
+        }
+        finally
+        {
+            extractCancellation.Dispose();
+            extractCancellation = null;
+            extractProgress.Visible = false;
+            if (!IsDisposed)
+                extractStatus.Text = "Ready — extraction starts automatically.";
+            extractProcessing = false;
+
+            // A new drop can arrive while the previous job was finishing.
+            bool restart;
+            lock (extractQueueLock)
+                restart = extractQueue.Count > 0;
+
+            if (restart)
+                _ = ProcessExtractQueueAsync();
+        }
+    }
+
+    private async Task ExtractOneAsync(string pkgPath, CancellationToken ct)
+    {
+        var output = CreateOutputDirectory(pkgPath);
+        extractStatus.Text = $"Reading: {Path.GetFileName(pkgPath)}";
+        AppendLog(extractLog, $"[{DateTime.Now:HH:mm:ss}] {Path.GetFileName(pkgPath)}");
+        AppendLog(extractLog, $"Output: {output}");
+
+        try
+        {
+            using var reader = new PkgReader(pkgPath, DefaultPasscode);
+            if (!reader.IsValidPkg)
+                throw new InvalidDataException("The file is not a valid PS4 PKG.");
+
+            var info = reader.GetInfo();
+            if (!string.IsNullOrWhiteSpace(info.Title))
+                AppendLog(extractLog, $"Title: {info.Title}");
+            if (!string.IsNullOrWhiteSpace(info.TitleId))
+                AppendLog(extractLog, $"Title ID: {info.TitleId}");
+            if (!string.IsNullOrWhiteSpace(info.ContentId))
+                AppendLog(extractLog, $"Content ID: {info.ContentId}");
+
+            var progressReporter = new Progress<(int Current, int Total, string CurrentFile)>(p =>
+            {
+                if (IsDisposed || Disposing) return;
+                var percent = p.Total <= 0 ? 0 : Math.Clamp((int)Math.Round(p.Current * 100.0 / p.Total), 0, 100);
+                extractProgress.Value = percent;
+                extractStatus.Text = $"Extracting {Path.GetFileName(pkgPath)} — {percent}%";
+            });
+
+            var options = new ExtractAllOptions
+            {
+                CancellationToken = ct,
+                ContinueOnError = true
+            };
+
+            var failures = await Task.Run(() => reader.ExtractAll(output, progressReporter, options), ct);
+            extractProgress.Value = 100;
+
+            if (failures.Count == 0)
+            {
+                extractStatus.Text = $"Finished: {Path.GetFileName(pkgPath)}";
+                AppendLog(extractLog, "Extraction completed successfully.");
+            }
+            else
+            {
+                extractStatus.Text = $"Finished with {failures.Count} error(s): {Path.GetFileName(pkgPath)}";
+                AppendLog(extractLog, $"Extraction completed with {failures.Count} file error(s):");
+                foreach (var failure in failures.Take(50))
+                    AppendLog(extractLog, $"  {failure.Path}: {failure.Exception.Message}");
+                if (failures.Count > 50)
+                    AppendLog(extractLog, $"  ...and {failures.Count - 50} more.");
+            }
+
+            AppendLog(extractLog, "");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            extractStatus.Text = $"Failed: {Path.GetFileName(pkgPath)}";
+            AppendLog(extractLog, "ERROR: " + ex.Message);
+            AppendLog(extractLog, "");
+        }
+    }
+
+    private static string CreateOutputDirectory(string pkgPath)
+    {
+        var parent = Path.GetDirectoryName(pkgPath)!;
+        var name = Path.GetFileNameWithoutExtension(pkgPath);
+        var candidate = Path.Combine(parent, name);
+
+        if (!Directory.Exists(candidate))
+        {
+            Directory.CreateDirectory(candidate);
+            return candidate;
+        }
+
+        for (var i = 1; ; i++)
+        {
+            candidate = Path.Combine(parent, $"{name}_extracted_{i}");
+            if (!Directory.Exists(candidate))
+            {
+                Directory.CreateDirectory(candidate);
+                return candidate;
+            }
+        }
+    }
+
+    // ---- Repack tab ----
+
+    public void QueueFolders(IEnumerable<string> paths)
+    {
+        var added = 0;
+        lock (repackQueueLock)
+        {
+            foreach (var path in paths)
+            {
+                if (Directory.Exists(path))
+                {
+                    repackQueue.Enqueue(Path.GetFullPath(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+                    added++;
+                }
+            }
+        }
+
+        if (added > 0)
+        {
+            AppendLog(repackLog, $"Queued {added} folder{(added == 1 ? "" : "s")}.");
+            if (!repackProcessing)
+                _ = ProcessRepackQueueAsync();
+        }
+    }
+
+    private async Task ProcessRepackQueueAsync()
+    {
+        if (repackProcessing) return;
+        repackProcessing = true;
+        repackCancellation = new CancellationTokenSource();
+        repackProgress.Visible = true;
+
+        try
+        {
+            while (true)
+            {
+                string? folder;
+                lock (repackQueueLock)
+                    folder = repackQueue.Count > 0 ? repackQueue.Dequeue() : null;
+
+                if (folder is null)
+                    break;
+
+                await RepackOneAsync(folder, repackCancellation.Token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            repackStatus.Text = "Repackaging cancelled.";
+            AppendLog(repackLog, "Repackaging cancelled.");
+        }
+        finally
+        {
+            repackCancellation.Dispose();
+            repackCancellation = null;
+            repackProgress.Visible = false;
+            if (!IsDisposed)
+                repackStatus.Text = "Ready — the GP4 project is generated automatically.";
+            repackProcessing = false;
+
+            bool restart;
+            lock (repackQueueLock)
+                restart = repackQueue.Count > 0;
+
+            if (restart)
+                _ = ProcessRepackQueueAsync();
+        }
+    }
+
+    private async Task RepackOneAsync(string folderPath, CancellationToken ct)
+    {
+        var folderName = Path.GetFileName(folderPath);
+        repackStatus.Text = $"Reading: {folderName}";
+        AppendLog(repackLog, $"[{DateTime.Now:HH:mm:ss}] {folderName}");
+
+        var usePubCmd = !string.IsNullOrWhiteSpace(pubCmdPath) && File.Exists(pubCmdPath);
+        var usePkgTool = !usePubCmd && !string.IsNullOrWhiteSpace(pkgToolPath) && File.Exists(pkgToolPath);
+
+        if (!usePubCmd && !usePkgTool)
+        {
+            repackStatus.Text = "No PKG builder tool set.";
+            AppendLog(repackLog, "ERROR: Neither orbis-pub-cmd.exe nor PkgTool.exe was found in this app's Tools folder.");
+            AppendLog(repackLog, "Get PkgTool.exe from github.com/OpenOrbis/LibOrbisPkg, or place orbis-pub-cmd.exe in this app's Tools folder for correctly-sized output.");
+            AppendLog(repackLog, "");
+            return;
+        }
+
+        string? tempGp4 = null;
+        string? tempOutDir = null;
+        try
+        {
+            repackStatus.Text = $"Generating project descriptor: {folderName}";
+            var pfscProfile = BuildSystemFileRawPolicy(folderPath);
+            var project = Gp4Project.FromFolder(folderPath, isPatch: false, pfscProfile: pfscProfile, strictGengp4: true);
+
+            AppendLog(repackLog, $"Title: {project.Title}");
+            if (!string.IsNullOrWhiteSpace(project.TitleId))
+                AppendLog(repackLog, $"Title ID: {project.TitleId}");
+            if (!string.IsNullOrWhiteSpace(project.ContentId))
+                AppendLog(repackLog, $"Content ID: {project.ContentId}");
+            AppendLog(repackLog, $"{project.Files.Count} entries.");
+
+            tempGp4 = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.gp4");
+            await File.WriteAllTextAsync(tempGp4, project.Serialize(), ct);
+
+            tempOutDir = Path.Combine(Path.GetTempPath(), $"pkgbuild_{Guid.NewGuid():N}");
+            Directory.CreateDirectory(tempOutDir);
+
+            var toolName = usePubCmd ? "orbis-pub-cmd.exe" : "PkgTool.exe";
+            repackStatus.Text = $"Building via {toolName}: {folderName}";
+            repackProgress.Style = ProgressBarStyle.Marquee;
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = usePubCmd ? pubCmdPath : pkgToolPath,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+
+            if (usePubCmd)
+            {
+                // orbis-pub-cmd.exe honors each file's pfs_compression attribute
+                // from the GP4 (unlike PkgTool.Core.exe, which ignores it and
+                // always builds uncompressed) — this is what gets us a
+                // correctly-sized package instead of one roughly double size.
+                psi.ArgumentList.Add("img_create");
+                psi.ArgumentList.Add("--oformat");
+                psi.ArgumentList.Add("pkg");
+                psi.ArgumentList.Add("--tmp_path");
+                psi.ArgumentList.Add(tempOutDir);
+                psi.ArgumentList.Add(tempGp4);
+                psi.ArgumentList.Add(tempOutDir);
+            }
+            else
+            {
+                psi.ArgumentList.Add("pkg_build");
+                psi.ArgumentList.Add(tempGp4);
+                psi.ArgumentList.Add(tempOutDir);
+            }
+
+            AppendLog(repackLog, $"Running: \"{psi.FileName}\" {string.Join(" ", psi.ArgumentList.Select(a => $"\"{a}\""))}");
+
+            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            process.OutputDataReceived += (_, args) => { if (args.Data != null) AppendLog(repackLog, args.Data); };
+            process.ErrorDataReceived += (_, args) => { if (args.Data != null) AppendLog(repackLog, "  " + args.Data); };
+
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            using (ct.Register(() =>
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
+            }))
+            {
+                await process.WaitForExitAsync(ct);
+            }
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"{toolName} exited with code {process.ExitCode} — see the log above for details.");
+
+            var builtPkg = Directory.EnumerateFiles(tempOutDir, "*.pkg", SearchOption.AllDirectories).FirstOrDefault();
+            if (builtPkg is null)
+                throw new FileNotFoundException($"{toolName} reported success but produced no .pkg file.");
+
+            var outputPkg = CreateOutputPkgPath(folderPath, project.ContentId);
+            File.Move(builtPkg, outputPkg);
+
+            repackProgress.Style = ProgressBarStyle.Continuous;
+            repackProgress.Value = 100;
+            repackStatus.Text = $"Finished: {Path.GetFileName(outputPkg)}";
+            AppendLog(repackLog, $"Output: {outputPkg}");
+            AppendLog(repackLog, $"Repackaging completed via {toolName}.");
+            AppendLog(repackLog, "");
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            repackStatus.Text = $"Failed: {folderName}";
+            AppendLog(repackLog, "ERROR: " + ex.Message);
+            AppendLog(repackLog, "");
+        }
+        finally
+        {
+            repackProgress.Style = ProgressBarStyle.Continuous;
+            if (tempGp4 != null)
+            {
+                try { File.Delete(tempGp4); } catch { }
+            }
+            if (tempOutDir != null)
+            {
+                try { Directory.Delete(tempOutDir, recursive: true); } catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sony's own packer never PFSC-compresses eboot.bin, the sce_module/*
+    /// .prx/.sprx native modules, or the sce_sys/* metadata — the PS4 loader
+    /// maps several of these directly and does not expect compressed data
+    /// there. Gp4Project.FromFolder has no way to know that on its own (it
+    /// just lists whatever's in the folder), so we build the raw/compressed
+    /// policy ourselves and hand it in, instead of leaving every file's
+    /// compression unset — which would make PkgBuilder compress everything,
+    /// including files that must stay raw for the package to actually boot.
+    /// </summary>
+    private static Dictionary<string, PfscPolicy> BuildSystemFileRawPolicy(string folderPath)
+    {
+        var profile = new Dictionary<string, PfscPolicy>();
+        foreach (var f in Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(folderPath, f).Replace('\\', '/');
+            var isSystemFile =
+                rel.Equals("eboot.bin", StringComparison.OrdinalIgnoreCase) ||
+                rel.StartsWith("sce_module/", StringComparison.OrdinalIgnoreCase) ||
+                rel.StartsWith("sce_sys/", StringComparison.OrdinalIgnoreCase);
+
+            profile[PfscProfiler.NormalizeKey(rel)] = isSystemFile ? PfscPolicy.Disable : PfscPolicy.Enable;
+        }
+        return profile;
+    }
+
+    private static string CreateOutputPkgPath(string folderPath, string? contentId)
+    {
+        var parent = Path.GetDirectoryName(folderPath)!;
+
+        var name = string.IsNullOrWhiteSpace(contentId)
+            ? Path.GetFileName(folderPath)
+            : contentId;
+
+        foreach (var invalid in Path.GetInvalidFileNameChars())
+            name = name.Replace(invalid, '_');
+
+        var candidate = Path.Combine(parent, name + ".pkg");
+
+        if (!File.Exists(candidate))
+            return candidate;
+
+        for (var i = 1; ; i++)
+        {
+            candidate = Path.Combine(parent, $"{name}_repack_{i}.pkg");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+    }
+
+    // ---- shared ----
+
+    private void AppendLog(TextBox target, string message)
+    {
+        if (IsDisposed || Disposing) return;
+        if (InvokeRequired)
+        {
+            try { BeginInvoke(new Action<TextBox, string>(AppendLog), target, message); } catch { }
+            return;
+        }
+        target.AppendText(message + Environment.NewLine);
+    }
+
+    // ---- native theming helpers ----
+
+    private void ApplyProgressBarColors(ProgressBar bar)
+    {
+        try
+        {
+            // Removing the visual style from the control is what lets Windows honor
+            // a custom bar/background color instead of forcing the themed green.
+            SetWindowTheme(bar.Handle, "", "");
+            SendMessage(bar.Handle, PBM_SETBARCOLOR, IntPtr.Zero, (IntPtr)ColorTranslator.ToWin32(bar.ForeColor));
+            SendMessage(bar.Handle, PBM_SETBKCOLOR, IntPtr.Zero, (IntPtr)ColorTranslator.ToWin32(bar.BackColor));
+        }
+        catch
+        {
+            // Best-effort styling only; fall back to the default look if unsupported.
+        }
+    }
+
+    private void ApplyDarkTitleBar()
+    {
+        try
+        {
+            int useDarkMode = 1;
+            if (DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDarkMode, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref useDarkMode, sizeof(int));
+        }
+        catch
+        {
+            // Older Windows builds without this attribute just keep the default title bar.
+        }
+    }
+
+    private const int PBM_SETBARCOLOR = 0x0409;
+    private const int PBM_SETBKCOLOR = 0x2001;
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
+
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+}

@@ -1,0 +1,323 @@
+namespace PS4PkgAutoExtractor;
+
+partial class MainForm
+{
+    /// <summary>
+    /// Required designer variable.
+    /// </summary>
+    private System.ComponentModel.IContainer components = null;
+
+    /// <summary>
+    /// Clean up any resources being used.
+    /// </summary>
+    /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && (components != null))
+        {
+            components.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+
+    #region Windows Form Designer generated code
+
+    /// <summary>
+    /// Required method for Designer support - do not modify
+    /// the contents of this method with the code editor.
+    /// </summary>
+    private void InitializeComponent()
+    {
+        System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
+        header = new Panel();
+        headerLabel = new Label();
+        headerDivider = new Panel();
+        tabControl = new TabControl();
+        extractPage = new TabPage();
+        extractDropZone = new Panel();
+        extractTitle = new Label();
+        extractStatus = new Label();
+        extractLog = new TextBox();
+        extractLogDivider = new Panel();
+        extractProgress = new ProgressBar();
+        repackPage = new TabPage();
+        repackDropZone = new Panel();
+        repackTitle = new Label();
+        repackStatus = new Label();
+        repackLog = new TextBox();
+        repackLogDivider = new Panel();
+        repackProgress = new ProgressBar();
+        header.SuspendLayout();
+        tabControl.SuspendLayout();
+        extractPage.SuspendLayout();
+        extractDropZone.SuspendLayout();
+        repackPage.SuspendLayout();
+        repackDropZone.SuspendLayout();
+        SuspendLayout();
+        // 
+        // header
+        // 
+        header.BackColor = Color.FromArgb(22, 25, 40);
+        header.Controls.Add(headerLabel);
+        header.Dock = DockStyle.Top;
+        header.Location = new Point(0, 0);
+        header.Name = "header";
+        header.Size = new Size(460, 38);
+        header.TabIndex = 0;
+        // 
+        // headerLabel
+        // 
+        headerLabel.Dock = DockStyle.Fill;
+        headerLabel.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold);
+        headerLabel.ForeColor = Color.FromArgb(66, 135, 245);
+        headerLabel.Location = new Point(0, 0);
+        headerLabel.Name = "headerLabel";
+        headerLabel.Padding = new Padding(12, 0, 0, 0);
+        headerLabel.Size = new Size(460, 38);
+        headerLabel.TabIndex = 0;
+        headerLabel.Text = "PS4 PKG EXTRACT REPACK";
+        headerLabel.TextAlign = ContentAlignment.MiddleCenter;
+        // 
+        // headerDivider
+        // 
+        headerDivider.BackColor = Color.FromArgb(35, 39, 58);
+        headerDivider.Dock = DockStyle.Top;
+        headerDivider.Location = new Point(0, 38);
+        headerDivider.Name = "headerDivider";
+        headerDivider.Size = new Size(460, 1);
+        headerDivider.TabIndex = 1;
+        // 
+        // tabControl
+        // 
+        tabControl.Controls.Add(extractPage);
+        tabControl.Controls.Add(repackPage);
+        tabControl.Dock = DockStyle.Fill;
+        tabControl.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+        tabControl.ItemSize = new Size(228, 28);
+        tabControl.Location = new Point(0, 39);
+        tabControl.Name = "tabControl";
+        tabControl.SelectedIndex = 0;
+        tabControl.Size = new Size(460, 281);
+        tabControl.SizeMode = TabSizeMode.Fixed;
+        tabControl.TabIndex = 2;
+        tabControl.SizeChanged += TabControl_SizeChanged;
+        // 
+        // extractPage
+        // 
+        extractPage.BackColor = Color.FromArgb(16, 18, 28);
+        extractPage.Controls.Add(extractDropZone);
+        extractPage.Controls.Add(extractLog);
+        extractPage.Controls.Add(extractLogDivider);
+        extractPage.Controls.Add(extractProgress);
+        extractPage.Location = new Point(4, 32);
+        extractPage.Name = "extractPage";
+        extractPage.Size = new Size(452, 245);
+        extractPage.TabIndex = 0;
+        extractPage.Text = "Extract";
+        // 
+        // extractDropZone
+        // 
+        extractDropZone.BackColor = Color.FromArgb(16, 18, 28);
+        extractDropZone.Controls.Add(extractTitle);
+        extractDropZone.Controls.Add(extractStatus);
+        extractDropZone.Dock = DockStyle.Fill;
+        extractDropZone.Location = new Point(0, 4);
+        extractDropZone.Name = "extractDropZone";
+        extractDropZone.Size = new Size(452, 144);
+        extractDropZone.TabIndex = 3;
+        // 
+        // extractTitle
+        // 
+        extractTitle.Dock = DockStyle.Fill;
+        extractTitle.Font = new Font("Segoe UI", 14F, FontStyle.Bold);
+        extractTitle.ForeColor = Color.FromArgb(232, 235, 244);
+        extractTitle.Location = new Point(0, 0);
+        extractTitle.Name = "extractTitle";
+        extractTitle.Size = new Size(452, 116);
+        extractTitle.TabIndex = 0;
+        extractTitle.Text = "Drop PS4 .PKG files here";
+        extractTitle.TextAlign = ContentAlignment.MiddleCenter;
+        // 
+        // extractStatus
+        // 
+        extractStatus.Dock = DockStyle.Bottom;
+        extractStatus.Font = new Font("Segoe UI", 8.5F);
+        extractStatus.ForeColor = Color.FromArgb(140, 148, 170);
+        extractStatus.Location = new Point(0, 116);
+        extractStatus.Name = "extractStatus";
+        extractStatus.Size = new Size(452, 28);
+        extractStatus.TabIndex = 1;
+        extractStatus.Text = "Ready — extraction starts automatically.";
+        extractStatus.TextAlign = ContentAlignment.MiddleCenter;
+        // 
+        // extractLog
+        // 
+        extractLog.BackColor = Color.FromArgb(11, 13, 20);
+        extractLog.BorderStyle = BorderStyle.None;
+        extractLog.Dock = DockStyle.Bottom;
+        extractLog.Font = new Font("Consolas", 8F);
+        extractLog.ForeColor = Color.FromArgb(140, 148, 170);
+        extractLog.Location = new Point(0, 148);
+        extractLog.Multiline = true;
+        extractLog.Name = "extractLog";
+        extractLog.ReadOnly = true;
+        extractLog.ScrollBars = ScrollBars.Vertical;
+        extractLog.Size = new Size(452, 96);
+        extractLog.TabIndex = 1;
+        // 
+        // extractLogDivider
+        // 
+        extractLogDivider.BackColor = Color.FromArgb(35, 39, 58);
+        extractLogDivider.Dock = DockStyle.Bottom;
+        extractLogDivider.Location = new Point(0, 244);
+        extractLogDivider.Name = "extractLogDivider";
+        extractLogDivider.Size = new Size(452, 1);
+        extractLogDivider.TabIndex = 2;
+        // 
+        // extractProgress
+        // 
+        extractProgress.BackColor = Color.FromArgb(22, 25, 40);
+        extractProgress.Dock = DockStyle.Top;
+        extractProgress.ForeColor = Color.FromArgb(66, 135, 245);
+        extractProgress.Location = new Point(0, 0);
+        extractProgress.Name = "extractProgress";
+        extractProgress.Size = new Size(452, 4);
+        extractProgress.Style = ProgressBarStyle.Continuous;
+        extractProgress.TabIndex = 0;
+        extractProgress.Visible = false;
+        // 
+        // repackPage
+        // 
+        repackPage.BackColor = Color.FromArgb(16, 18, 28);
+        repackPage.Controls.Add(repackDropZone);
+        repackPage.Controls.Add(repackLog);
+        repackPage.Controls.Add(repackLogDivider);
+        repackPage.Controls.Add(repackProgress);
+        repackPage.Location = new Point(4, 32);
+        repackPage.Name = "repackPage";
+        repackPage.Size = new Size(452, 245);
+        repackPage.TabIndex = 1;
+        repackPage.Text = "Repack";
+        // 
+        // repackDropZone
+        // 
+        repackDropZone.BackColor = Color.FromArgb(16, 18, 28);
+        repackDropZone.Controls.Add(repackTitle);
+        repackDropZone.Controls.Add(repackStatus);
+        repackDropZone.Dock = DockStyle.Fill;
+        repackDropZone.Location = new Point(0, 4);
+        repackDropZone.Name = "repackDropZone";
+        repackDropZone.Size = new Size(452, 144);
+        repackDropZone.TabIndex = 3;
+        // 
+        // repackTitle
+        // 
+        repackTitle.Dock = DockStyle.Fill;
+        repackTitle.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
+        repackTitle.ForeColor = Color.FromArgb(232, 235, 244);
+        repackTitle.Location = new Point(0, 0);
+        repackTitle.Name = "repackTitle";
+        repackTitle.Size = new Size(452, 116);
+        repackTitle.TabIndex = 0;
+        repackTitle.Text = "Drop an extracted folder here to repackage";
+        repackTitle.TextAlign = ContentAlignment.MiddleCenter;
+        // 
+        // repackStatus
+        // 
+        repackStatus.Dock = DockStyle.Bottom;
+        repackStatus.Font = new Font("Segoe UI", 8.5F);
+        repackStatus.ForeColor = Color.FromArgb(140, 148, 170);
+        repackStatus.Location = new Point(0, 116);
+        repackStatus.Name = "repackStatus";
+        repackStatus.Size = new Size(452, 28);
+        repackStatus.TabIndex = 1;
+        repackStatus.Text = "Ready — the GP4 project is generated automatically.";
+        repackStatus.TextAlign = ContentAlignment.MiddleCenter;
+        // 
+        // repackLog
+        // 
+        repackLog.BackColor = Color.FromArgb(11, 13, 20);
+        repackLog.BorderStyle = BorderStyle.None;
+        repackLog.Dock = DockStyle.Bottom;
+        repackLog.Font = new Font("Consolas", 8F);
+        repackLog.ForeColor = Color.FromArgb(140, 148, 170);
+        repackLog.Location = new Point(0, 148);
+        repackLog.Multiline = true;
+        repackLog.Name = "repackLog";
+        repackLog.ReadOnly = true;
+        repackLog.ScrollBars = ScrollBars.Vertical;
+        repackLog.Size = new Size(452, 96);
+        repackLog.TabIndex = 1;
+        // 
+        // repackLogDivider
+        // 
+        repackLogDivider.BackColor = Color.FromArgb(35, 39, 58);
+        repackLogDivider.Dock = DockStyle.Bottom;
+        repackLogDivider.Location = new Point(0, 244);
+        repackLogDivider.Name = "repackLogDivider";
+        repackLogDivider.Size = new Size(452, 1);
+        repackLogDivider.TabIndex = 2;
+        // 
+        // repackProgress
+        // 
+        repackProgress.BackColor = Color.FromArgb(22, 25, 40);
+        repackProgress.Dock = DockStyle.Top;
+        repackProgress.ForeColor = Color.FromArgb(66, 135, 245);
+        repackProgress.Location = new Point(0, 0);
+        repackProgress.Name = "repackProgress";
+        repackProgress.Size = new Size(452, 4);
+        repackProgress.Style = ProgressBarStyle.Continuous;
+        repackProgress.TabIndex = 0;
+        repackProgress.Visible = false;
+        // 
+        // MainForm
+        // 
+        AllowDrop = true;
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+        BackColor = Color.FromArgb(16, 18, 28);
+        ClientSize = new Size(460, 320);
+        Controls.Add(tabControl);
+        Controls.Add(headerDivider);
+        Controls.Add(header);
+        ForeColor = Color.FromArgb(232, 235, 244);
+        Icon = (Icon)resources.GetObject("$this.Icon");
+        MinimumSize = new Size(380, 260);
+        Name = "MainForm";
+        StartPosition = FormStartPosition.CenterScreen;
+        FormClosing += MainForm_FormClosing;
+        Load += MainForm_Load;
+        DragDrop += OnDragDrop;
+        DragEnter += OnDragEnter;
+        header.ResumeLayout(false);
+        tabControl.ResumeLayout(false);
+        extractPage.ResumeLayout(false);
+        extractPage.PerformLayout();
+        extractDropZone.ResumeLayout(false);
+        repackPage.ResumeLayout(false);
+        repackPage.PerformLayout();
+        repackDropZone.ResumeLayout(false);
+        ResumeLayout(false);
+    }
+
+    #endregion
+
+    private System.Windows.Forms.Panel header;
+    private System.Windows.Forms.Label headerLabel;
+    private System.Windows.Forms.Panel headerDivider;
+    private System.Windows.Forms.TabControl tabControl;
+    private System.Windows.Forms.TabPage extractPage;
+    private System.Windows.Forms.Panel extractDropZone;
+    private System.Windows.Forms.Label extractTitle;
+    private System.Windows.Forms.Label extractStatus;
+    private System.Windows.Forms.ProgressBar extractProgress;
+    private System.Windows.Forms.Panel extractLogDivider;
+    private System.Windows.Forms.TextBox extractLog;
+    private System.Windows.Forms.TabPage repackPage;
+    private System.Windows.Forms.Panel repackDropZone;
+    private System.Windows.Forms.Label repackTitle;
+    private System.Windows.Forms.Label repackStatus;
+    private System.Windows.Forms.ProgressBar repackProgress;
+    private System.Windows.Forms.Panel repackLogDivider;
+    private System.Windows.Forms.TextBox repackLog;
+}
